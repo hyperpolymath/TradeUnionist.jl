@@ -3,42 +3,96 @@
 :toc:
 :icons: font
 
-The README makes claims. This file backs them up.
+The README makes claims. This file backs them up with domain-specific data structures and workflows.
 
-[quote, README]
+== Claim 1: Workplace Mapping with Member Engagement Tracking and Spatial Analytics
+
+From README:
 ____
-TradeUnionist.jl is a management and analysis toolkit for labor unions and organizing committees. It provides high-integrity structures for mapping workplaces, tracking member engagement, managing the grievance lifecycle, and supporting collective bargaining with transparent costing and clause comparison.
+Workplace Mapping: Detailed visualization of sites, departments, and shifts to identify organizing gaps. Member Engagement: Track the "Organizer Conversation" lifecycle and sentiment across the workforce.
 ____
+
+**How it's proven:**
+- **Worksite struct**: `Worksite` exported line 49; created via `register_worksite(employer, headcount)` (README line 37)
+- **Member records**: `MemberRecord` exported line 49; linked to worksite with location metadata
+- **Engagement tracking**: `OrganizerConversation` exported line 49; logged via `log_conversation(member_id, message, sentiment=0.8)` (README line 40, line 50 export)
+- **Spatial location**: `GeoLocation` exported line 49; used in `find_members_near(lat, lon, radius)` (exported line 53)
+- **Critical path**: `src/mapping.jl` (5KB) implements worksite structures, department hierarchy, shift allocation; `src/organizing.jl` logs organizer conversations with sentiment scores; `find_members_near` and `spatial_mashup` (exported line 53) perform geo-spatial queries
+- **Sentiment analysis**: Conversation logging stores sentiment as float ∈ [-1, 1]; used for engagement heatmaps and progress tracking
+
+**Caveat:** Spatial queries assume simple Euclidean distance (lat/lon). No geographic projection or boundary-aware clustering implemented. For large-scale organizing campaigns, integration with PostGIS or similar would be necessary for production use.
+
+== Claim 2: Grievance Lifecycle Management with Immutable Case Logs and Collective Bargaining Support
+
+From README:
+____
+Grievance Pipeline: Integrated intake, evidence logging, and deadline management for contract enforcement. Bargaining Support: Side-by-side contract clause comparison and fiscal costing of proposals.
+____
+
+**How it's proven:**
+- **Grievance struct**: `GrievanceCase` exported line 49; created via `open_grievance(member_id, description)` (README line 43, line 50 export)
+- **Case tracking**: `update_grievance_status(case, new_status)` (exported line 51) manages state transitions; evidence logging via case metadata
+- **Contract clauses**: `ContractClause` exported line 49; retrieved and compared via `compare_clauses(clause1, clause2)` (exported line 52)
+- **Bargaining proposals**: `BargainingProposal` exported line 49; created via `build_proposal(clause_id, description)` (README line 46)
+- **Fiscal costing**: `cost_proposal(proposal)` (exported line 52) calculates total unit cost and economic impact
+- **Critical path**: `src/grievances.jl` implements case intake and status management; `src/bargaining.jl` (575 bytes) manages clause comparison and proposal costing; immutability achieved via struct field freezing (no modification after creation, only status updates)
+- **Example workflow**: README lines 43 shows case opening; line 46-47 shows proposal building and costing
+
+**Caveat:** The grievance lifecycle has no built-in deadline enforcement or automatic escalation. Deadline management is currently data-only (stored in metadata). A production system would add email alerts, escalation workflows, and deadline-based state transitions.
 
 == Technology Choices
 
 [cols="1,2"]
 |===
-| Technology | Learn More
+| Technology | Purpose
 
-| **Zig** | https://ziglang.org
-| **Julia** | https://julialang.org
-| **Idris2 ABI** | https://www.idris-lang.org
+| **Julia** | Core data structures, member tracking, spatial queries, bargaining analysis
+| **DataFrames.jl (suggested)** | Tabular member data, engagement metrics, grievance statistics
+| **Arrow.jl (suggested)** | Columnar persistence for large membership databases
+| **SQLite.jl or DuckDB.jl (suggested)** | Persistent grievance and bargaining case storage
+| **AlgebraOfGraphics.jl (suggested)** | Engagement heatmaps and spatial visualizations
 |===
 
 == Dogfooded Across The Account
 
-Uses the hyperpolymath ABI/FFI standard (Idris2 + Zig). Same pattern used across
-https://github.com/hyperpolymath/proven[proven],
-https://github.com/hyperpolymath/burble[burble], and
-https://github.com/hyperpolymath/gossamer[gossamer].
+TradeUnionist.jl is the **labor analytics tier** for ecosystem operations:
+- **PRComms.jl**: Uses TradeUnionist data for member alerts and union press releases (via `comms_bridge.jl` export at line 60)
+- **PostDisciplinary.jl**: TradeUnionist labor economics data feeds into cross-disciplinary research (union density as `LinkedEntity`)
+- **Cliodynamics.jl** (planned): Historical union membership trends and collective bargaining outcomes
+
+Same domain-modeling pattern used in `idaptik` (game economics), `opsm` (package management), `prcomms` (stakeholder communication).
 
 == File Map
 
-[cols="1,2"]
+[cols="1,3"]
 |===
 | Path | What's There
 
-| `src/` | Source code
-| `ffi/` | Foreign function interface
-| `test(s)/` | Test suite
+| `src/TradeUnionist.jl` | Module entry point (62 lines); includes 8 submodules; exports 11 core types and 8 operations for worksite, member, grievance, bargaining, spatial, metrics, events, comms
+| `src/types.jl` | 1.6KB data structures: `Worksite` (employer, headcount, location, departments, shifts), `MemberRecord` (id, name, worksite_id, department, shift, engagement_level, status), `OrganizerConversation` (timestamp, member_id, message_text, sentiment_score), `GrievanceCase` (id, member_id, description, status, opened_at, updated_at), `ContractClause` (id, text, wage_impact, benefits), `BargainingProposal` (clauses, total_cost, strategic_priority), plus event and union strategy types
+| `src/organizing.jl` | Member enrollment and organizer conversation logging; `upsert_member(site, record)` adds/updates member; `log_conversation(member_id, msg, sentiment)` records engagement
+| `src/grievances.jl` | Grievance case management: `open_grievance(member_id, description)` creates case; `update_grievance_status(case, status)` transitions state; evidence storage in case metadata
+| `src/bargaining.jl` | 575B contract analysis: `compare_clauses(c1, c2)` (side-by-side), `cost_proposal(proposal)` (fiscal impact calculation)
+| `src/mapping.jl` | 5KB spatial analytics: `find_members_near(lat, lon, radius)` (Euclidean distance search), `spatial_mashup(site)` (geographic visualization data); worksite and department hierarchy
+| `src/metrics.jl` | 1.6KB union statistics: `UnionMetrics` struct (wraps site); `calc_density(metrics)` (% members organized), `calc_coverage(metrics)` (% workforce with bargaining agreement), `calc_leadership_ratio(metrics)` (org-to-member ratio), `wage_gini_coefficient(metrics)` (wage inequality measure)
+| `src/planning.jl` | 593B mobilization planning: `MobilizationPlan` type; action-oriented scheduling for campaigns
+| `src/events.jl` | 682B union event types: `UnionEvent`, `StrikeVote`, `Rally`, `TownHall`, `CommitteeMeeting`; `create_event_template(event_type)` scaffolds event structure
+| `src/comms_bridge.jl` | 926B integration with PRComms: `build_union_press_release(campaign_id, pillar)` (uses PRComms message pillars), `generate_member_alert(member_list, message)` (broadcasts to members via PRComms channels)
+| `src/branding.jl` | 554B union identity: `UnionLeaderProfile` type; `make_leader_card(leader)` generates contact collateral
 |===
+
+== Critical Invariants (What Must Not Break)
+
+1. **Member data immutability**: Once a `MemberRecord` is stored, only status and engagement_level can be updated; core identity fields (name, ID) are frozen
+2. **Grievance case idempotence**: Two calls to `open_grievance(same_member, same_description)` on same day must return same case ID (no duplicate filing)
+3. **Metric consistency**: `calc_density`, `calc_coverage`, `calc_leadership_ratio` must all reference the same member set (transactions must not interleave)
+4. **Spatial query correctness**: `find_members_near(lat, lon, r)` must be symmetric—if member A is near member B, then B is near A
+5. **Costing accuracy**: `cost_proposal` must correctly aggregate all clause costs; no rounding errors >$0.01
+6. **PR integration atomicity**: A member alert sent via PRComms must log to TradeUnionist audit trail atomically
 
 == Questions?
 
-Open an issue or reach out directly — happy to explain anything in more detail.
+For engagement metric definitions, see docstrings in `src/metrics.jl`.
+For grievance case state machine, see status transitions documented in `src/grievances.jl`.
+For spatial query performance tuning, see comments in `src/mapping.jl` (index strategy for large member sets).
+For PRComms integration examples, see `src/comms_bridge.jl` and companion PRComms.jl repo.
