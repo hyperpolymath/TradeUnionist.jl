@@ -358,4 +358,8 @@ using DataFrames
         end
     end
 
+    # CRG Grade C tests
+    include("e2e_test.jl")
+    include("property_test.jl")
+
 end # top-level testset
