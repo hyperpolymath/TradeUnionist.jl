@@ -3,7 +3,7 @@ module Types
 
 using Dates
 
-export Worksite, MemberRecord, OrganizerConversation, GrievanceCase, ContractClause, BargainingProposal, MobilizationPlan
+export Worksite, MemberRecord, OrganizerConversation, GrievanceCase, ContractClause, BargainingProposal, MobilizationPlan, GeoLocation
 
 struct GeoLocation
     lat::Float64
